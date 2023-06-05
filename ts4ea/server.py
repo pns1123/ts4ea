@@ -44,7 +44,7 @@ class RoundCounter:
         return self.cur_round
 
     def update(self):
-        self.cur_round = (self.cur_round + 1) % 10
+        self.cur_round = (self.cur_round + 1)
 
 
 cur_round = RoundCounter()
@@ -108,7 +108,7 @@ class ExplanationDistributor:
                     "ref_exp_bytes": ref_exp_buffer.getvalue(),
                     "exp_adjusted_bytes": exp_adjusted_buffer.getvalue(),
                     "pred": filename2pred[filename]["pred"],
-                    "round": cur_round.get() + 1,
+                    "round": len(reward_history) + 1,
                     "feature_vec": json.dumps(
                         {"coef": list(config_encoder.encode(params))}
                     ),
@@ -185,7 +185,7 @@ async def register_user(stream_res):
                 "ref_exp_bytes": ref_exp_buffer.getvalue(),
                 "exp_adjusted_bytes": exp_adjusted_buffer.getvalue(),
                 "pred": filename2pred[filename]["pred"],
-                "round": cur_round.get() + 1,
+                "round": 1,
                 "feature_vec": json.dumps(
                     {"coef": list(config_encoder.encode(params))}
                 ),
