@@ -7,11 +7,7 @@ import time
 
 from fastapi import FastAPI
 from PIL import Image
-from ts4ea.msg_q import RedisConnection
-
-CUSTOM_PATH = "/gradio"
-
-app = FastAPI()
+from msg_q import RedisConnection
 
 
 get_window_url_params = """
@@ -172,6 +168,7 @@ with gr.Blocks() as interface:
     )
 
 
-interface.launch(debug=True, server_name="0.0.0.0")
+interface.launch(debug=True, server_name="0.0.0.0", share=True)
 
-app = gr.mount_gradio_app(app, interface, path=CUSTOM_PATH)
+#app = FastAPI()
+#app = gr.mount_gradio_app(app, interface, path=CUSTOM_PATH)
