@@ -13,6 +13,8 @@ class RedisConnection:
 
     def __init__(self, host="redis", port=6379):
         self.connection = redis.Redis(host=host, port=port)
+        #dev
+        #self.connection = redis.Redis()
 
     def __enter__(self):
         return self.connection
@@ -32,6 +34,8 @@ class AsyncRedisConnection:
 
     def __init__(self, host="redis", port=6379):
         self.connection = aredis.Redis(host=host, port=port)
+        #dev
+        #self.connection = aredis.Redis()
 
     async def __aenter__(self):
         return self.connection
