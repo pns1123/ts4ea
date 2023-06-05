@@ -18,7 +18,7 @@ services:
 
   ui:
     image: ui_img
-    command: python3 ts4ea/ui.py
+    command: python3 -u ts4ea/ui.py
     ports:
       - '7860:7860'
     networks:
