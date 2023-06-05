@@ -18,6 +18,7 @@ services:
 
   ui:
     image: ui_img
+    command: python3 ts4ea/server.py
     ports:
       - '7860:7860'
     networks:
@@ -25,18 +26,9 @@ services:
 
   server:
     image: server_img
+    command: python3 ts4ea/ui.py
     networks:
     - app-tier
-
-  traefik:
-    image: traefik:v2.2
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - "$PWD/traefik.prod.toml:/etc/traefik/traefik.toml"
-
 
 volumes:
   cache:
