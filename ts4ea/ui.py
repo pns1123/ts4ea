@@ -93,26 +93,22 @@ with gr.Blocks() as interface:
     # text_output = gr.Text(label="Output")
 
     with gr.Row():
-        middle_img = gr.Image(interactive=False)
-
-    choice = gr.Radio(
-        choices=["Berlin", "Hamburg", "Jerusalem", "Tel-Aviv"],
-        label="1) Select the city this Streetview photo was taken in:",
-    )
+        ref_img = gr.Image(interactive=False, label="Streetview Image")
+        raw_img = gr.Image(interactive=False, label="Explanation 1")
+        adj_img = gr.Image(interactive=False, label="Explanation 2")
 
     with gr.Row():
-        left_img = gr.Image(interactive=False)
-        right_img = gr.Image(interactive=False)
-
-    with gr.Row():
-        explainer_msg = gr.Text(
-            value="Select the explanation which was more helpful for your decision:",
-            label="2) Select Explanation",
+        city_choice = gr.Radio(
+            choices=["Berlin", "Hamburg", "Jerusalem", "Tel-Aviv"],
+            label="1) Select the city this Streetview photo was taken in:",
         )
 
     with gr.Row():
-        select_left_explanation = gr.Button("Left Explanation")
-        select_right_explanation = gr.Button("Right Explanation")
+        explanation_choice = gr.Radio(
+            choices=["Explanation 1 (Left)", "Explanation 2 (Right)", "Explanations are Equal"],
+            label="2) Select the explanation you find more helpful in identifying the location of the photo.",
+        )
+
 
     with gr.Row():
         round_counter = gr.Textbox(value=f"", label="Round")
@@ -120,21 +116,25 @@ with gr.Blocks() as interface:
     with gr.Row():
         feature_vec = gr.JSON(value={}, label="feature_vec encoded", visible=False)
 
+    with gr.Row():
+        select_left_explanation = gr.Button("Submit")
+        select_left_explanation = gr.Button("Submit", visible=False)
+
     interface.load(
         _js=get_window_url_params,
         fn=hello,
         inputs=[
-            left_img,
-            middle_img,
-            right_img,
+            ref_img,
+            raw_img,
+            adj_img,
             round_counter,
             feature_vec,
             url_params,
         ],
         outputs=[
-            left_img,
-            middle_img,
-            right_img,
+            ref_img,
+            raw_img,
+            adj_img,
             round_counter,
             feature_vec,
             url_params,
@@ -145,27 +145,27 @@ with gr.Blocks() as interface:
         fn=load_images,
         inputs=[url_params, feature_vec, gr.Number(value=0, visible=False)],
         outputs=[
-            left_img,
-            middle_img,
-            right_img,
+            ref_img,
+            raw_img,
+            adj_img,
             round_counter,
             feature_vec,
             url_params,
         ],
     )
 
-    select_right_explanation.click(
-        fn=load_images,
-        inputs=[url_params, feature_vec, gr.Number(value=1, visible=False)],
-        outputs=[
-            left_img,
-            middle_img,
-            right_img,
-            round_counter,
-            feature_vec,
-            url_params,
-        ],
-    )
+    #select_right_explanation.click(
+    #    fn=load_images,
+    #    inputs=[url_params, feature_vec, gr.Number(value=1, visible=False)],
+    #    outputs=[
+    #        ref_img,
+    #        raw_img,
+    #        adj_img,
+    #        round_counter,
+    #        feature_vec,
+    #        url_params,
+    #    ],
+    #)
 
 
 interface.launch(debug=True, server_name="0.0.0.0", share=True)
