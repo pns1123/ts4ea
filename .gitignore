@@ -1,5 +1,6 @@
 model
 streetview
+dump.rdb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
