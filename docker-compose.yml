@@ -28,6 +28,17 @@ services:
     networks:
     - app-tier
 
+  traefik:
+    image: traefik:v2.2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "$PWD/traefik.prod.toml:/etc/traefik/traefik.toml"
+
+
 volumes:
   cache:
     driver: local
+
