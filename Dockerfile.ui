@@ -16,4 +16,3 @@ RUN pip install --upgrade pip \
 RUN mkdir /ts4ea
 COPY ts4ea /ts4ea
 
-CMD ["uvicorn", "ts4ea.ui:app"]

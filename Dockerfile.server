@@ -18,4 +18,3 @@ COPY streetview /streetview
 #RUN mkdir /ts4ea
 COPY ts4ea /ts4ea
 
-CMD ["python3", "ts4ea/server.py"]
