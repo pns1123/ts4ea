@@ -1,0 +1,33 @@
+version: '3.8'
+
+networks:
+  app-tier:
+    driver: bridge
+
+services:
+  redis:
+    image: redis:6.2-alpine
+    restart: always
+    ports:
+      - '6379:6379'
+    command: redis-server --save 20 1 --loglevel warning 
+    volumes: 
+      - cache:/data
+    networks:
+      - app-tier
+
+  ui:
+    image: ui_img
+    ports:
+      - '7860:7860'
+    networks:
+    - app-tier
+
+  server:
+    image: server_img
+    networks:
+    - app-tier
+
+volumes:
+  cache:
+    driver: local
