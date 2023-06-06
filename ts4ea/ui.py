@@ -155,11 +155,11 @@ with gr.Blocks() as interface:
         explanation_label2reward = {
             REFERENCE_LABEL: 0.0,
             ADJUSTED_LABEL: 1.0,
-            CONTROL_LABEL: 1.0,
+            #CONTROL_LABEL: 1.0,
         }
         explanation_choice = gr.Radio(
             choices=[
-                CONTROL_LABEL,
+                #CONTROL_LABEL,
                 REFERENCE_LABEL,
                 ADJUSTED_LABEL,
             ],

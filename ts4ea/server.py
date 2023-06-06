@@ -21,9 +21,9 @@ np.random.shuffle(filenames)
 filename_iter = cycle(filenames)
 
 categorical_variables = {
-    "segmentation_method": ["felzenszwalb", "slic"],
+    "segmentation_method": ["felzenszwalb", "slic"],#, "quickshift", "watershed"],
     "negative": [None, "darkblue"],
-    # "coverage": [0.15, 0.5, 0.85],
+     "coverage": [0.15, 0.5, 0.85],
     # "opacity": [0.15, 0.5, 0.85],
 }
 
