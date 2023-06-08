@@ -105,18 +105,14 @@ if __name__ == "__main__":
         tuple(config_encoder.encode(target_params))
         <= tuple(config_encoder.encode(default_params))
     )
-    mu_prior = config_encoder.encode(default_params)
-    sigma2_prior = 5 * np.ones(len(mu_prior))
-    print(mu_prior)
-    print(sigma2_prior)
-    n_iter = 50
+    n_iter = 12
     n_samples = 100
     y_late_record = []
     y_early_record = []
     for _ in range(n_samples):
         y_record = []
         mu_prior = config_encoder.encode(default_params)
-        sigma2_prior = 5 * np.ones(len(mu_prior))
+        sigma2_prior = 1 * np.ones(len(mu_prior))
         for _ in range(n_iter):
             theta = thompson_sampler.sample_model(mu_prior, sigma2_prior)
             config = thompson_sampler.select_arm(theta)
@@ -130,14 +126,14 @@ if __name__ == "__main__":
             mu_prior, sigma2_prior = thompson_sampler.amp_update(
                 mu_prior, sigma2_prior, config_encoder.encode(config), y
             )
-        y_early_record.append(np.mean(y_record[:10]))
-        y_late_record.append(np.mean(y_record[-10:]))
+        y_early_record.append(np.mean(y_record[:7]))
+        y_late_record.append(np.mean(y_record[-6:]))
         #print(72 * "-")
         #print(mu_prior)
         #print(sigma2_prior)
         #print(y_record, np.mean(y_record[:8]), np.mean(y_record[8:]))
         #print(target_params)
         #print(thompson_sampler.select_arm(theta))
-    print(y_early_record)
-    print(y_late_record)
+    #print(y_early_record)
+    #print(y_late_record)
     print(np.mean(y_early_record), np.mean(y_late_record))

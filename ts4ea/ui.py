@@ -11,11 +11,11 @@ from PIL import Image
 from msg_q import RedisConnection
 
 get_window_url_params = """
-    function(right_img, middle_img, left_img, round_counter, personal_params, url_params, pred) {
+    function(right_img, middle_img, left_img, round_counter, personal_params, url_params, pred, left_ref_ind) {
         console.log(right_img, url_params);
         const params = new URLSearchParams(window.location.search);
         url_params = Object.fromEntries(params);
-        return [right_img, middle_img, left_img, round_counter, personal_params, url_params, pred];
+        return [right_img, middle_img, left_img, round_counter, personal_params, url_params, pred, left_ref_ind];
         }
     """
 
@@ -33,9 +33,41 @@ set_window_url_params = """
     """
 
 
+def coin_flip():
+    return np.random.binomial(n=1, p=0.5) == 1
+
+
+def compute_reward(ref_left_indicator, choice):
+    print(ref_left_indicator, type(ref_left_indicator), choice, type(choice))
+    if choice == SIMILAR_LABEL:
+        return 1.0
+    elif choice == RIGHT_LABEL and ref_left_indicator:
+        return 1.0
+    elif choice == LEFT_LABEL and not ref_left_indicator:
+        return 1.0
+    else:
+        return -1.0
+
+def proc_pred_city(pred_city):
+    if pred_city == "Westjerusalem":
+        return "Jerusalem"
+    elif pred_city == "Tel_Aviv":
+        return "Tel Aviv"
+    else: 
+        return pred_city
+
+
 def hello(
-    img_left, img_middle, img_right, round_counter, feature_vec, url_params, pred
+    img_left,
+    img_middle,
+    img_right,
+    round_counter,
+    feature_vec,
+    url_params,
+    pred,
+    left_ref_ind,
 ):
+
     user_id = url_params.get("user_id", "default_user_id")
     with RedisConnection() as conn:
         conn.xadd(b"hello", {"user_id": url_params.get("user_id", "default_user_id")})
@@ -47,10 +79,21 @@ def hello(
         [a, b] = res[0]
         _, y = b[0]
         img_middle = Image.open(io.BytesIO(y[b"img_bytes"]))
-        img_left = Image.open(io.BytesIO(y[b"ref_exp_bytes"]))
-        img_right = Image.open(io.BytesIO(y[b"exp_adjusted_bytes"]))
+
+        if coin_flip():
+            print("side A")
+            img_left = Image.open(io.BytesIO(y[b"ref_exp_bytes"]))
+            img_right = Image.open(io.BytesIO(y[b"exp_adjusted_bytes"]))
+            left_ref_ind = True
+        else:
+            print("side B")
+            img_left = Image.open(io.BytesIO(y[b"exp_adjusted_bytes"]))
+            img_right = Image.open(io.BytesIO(y[b"ref_exp_bytes"]))
+            left_ref_ind = False
+
         cur_round = y[b"round"].decode()
-        pred_city = y[b"pred"].decode()
+        pred_city = proc_pred_city(y[b"pred"].decode())
+        # fix inconsistent labels
         pred = f"The AI predicts that the image was taken in {pred_city}. It gives two explanations for its guess:"
 
         feature_vec = y[b"feature_vec"]
@@ -64,32 +107,33 @@ def hello(
         feature_vec,
         url_params,
         pred,
+        left_ref_ind,
     ]
 
 
 def load_images(
-    ref_img,
-    raw_img,
-    adj_img,
+    img_left,
+    img_middle,
+    img_right,
     round_counter,
     url_params,
     feature_vec,
-    reward,
     city_choice,
     explanation_choice,
     pred,
     submit,
     warning,
+    left_ref_ind,
 ):
-    print(city_choice, explanation_choice, feature_vec)
+    print(city_choice, type(city_choice), left_ref_ind, type(left_ref_ind))
     # currently it is not clear why city_choice and explanation_choice
     # are sometimes passed as "" or None when no choice is made
     # REMOVE THIS IMPLICT BOOLEAN CHECK WHEN POSSIBLE
     if not city_choice or not explanation_choice:
         return [
-            ref_img,
-            raw_img,
-            adj_img,
+            img_left,
+            img_middle,
+            img_right,
             round_counter,
             json.dumps(feature_vec),
             url_params,
@@ -98,16 +142,16 @@ def load_images(
             pred,
             submit,
             gr.update(visible=True),
+            left_ref_ind,
         ]
     else:
-        print(f"load_images: url_params = {url_params}")
+        reward = compute_reward(left_ref_ind, explanation_choice)
+        print("reward:", reward)
         user_id = url_params.get("user_id", "default_user_id")
         with RedisConnection() as conn:
             stream_name = str.encode(f"{user_id}_reward_history")
-            print(f"load_images xadd on {stream_name}")
-            print("feature_vec =", feature_vec)
-            print("json.dumps(...) =", json.dumps(feature_vec))
-            print("type(...) =", type(feature_vec))
+            print("reward:", reward)
+            print("feature_vec:", feature_vec)
             conn.xadd(
                 stream_name,
                 {
@@ -124,11 +168,19 @@ def load_images(
             res = conn.xread(stream_keys, count=None, block=0)
             [a, b] = res[0]
             _, y = b[0]
-            raw_img = Image.open(io.BytesIO(y[b"img_bytes"]))
-            ref_img = Image.open(io.BytesIO(y[b"ref_exp_bytes"]))
-            adj_img = Image.open(io.BytesIO(y[b"exp_adjusted_bytes"]))
+
+            img_middle = Image.open(io.BytesIO(y[b"img_bytes"]))
+            if coin_flip():
+                img_left = Image.open(io.BytesIO(y[b"ref_exp_bytes"]))
+                img_right = Image.open(io.BytesIO(y[b"exp_adjusted_bytes"]))
+                left_ref_ind = True
+            else:
+                img_left = Image.open(io.BytesIO(y[b"exp_adjusted_bytes"]))
+                img_right = Image.open(io.BytesIO(y[b"ref_exp_bytes"]))
+                left_ref_ind = False
+
             cur_round = y[b"round"].decode()
-            pred_city = y[b"pred"].decode()
+            pred_city = proc_pred_city(y[b"pred"].decode())
             pred = f"The AI predicts that the image was taken in {pred_city}. It gives two explanations for its guess:"
             feature_vec = y[b"feature_vec"]
 
@@ -146,15 +198,16 @@ def load_images(
                     pred,
                     gr.update(visible=False),
                     gr.update(visible=False),
+                    left_ref_ind,
                 ]
 
             else:
                 round_counter = f"Round: {cur_round}/{N_ROUNDS}. \nDO NOT CLICK NEXT before completing all {N_ROUNDS} rounds. This will end the current stage prematurely and lead to a loss of your financial compensation!"
 
                 return [
-                    ref_img,
-                    raw_img,
-                    adj_img,
+                    img_left,
+                    img_middle,
+                    img_right,
                     round_counter,
                     feature_vec,
                     url_params,
@@ -163,20 +216,20 @@ def load_images(
                     pred,
                     submit,
                     gr.update(visible=False),
+                    left_ref_ind,
                 ]
 
 
 with gr.Blocks() as interface:
     url_params = gr.JSON(value={}, visible=False, label="URL Params")
-    # text_input = gr.Text(label="Input")
-    # text_output = gr.Text(label="Output")
+    # ref_img_indicator == True <=> ref_exp displayed on left
+    left_ref_img_indicator = gr.Checkbox(visible=False)
 
-    pred = gr.Text("", visible=True, label="AI Prediction")
+    pred = gr.Text("", visible=True, label="AI Prediction", interactive=False)
     with gr.Row():
-        ref_img = gr.Image(interactive=False, label="Explanation 1")
+        left_img = gr.Image(interactive=False, label="Explanation 1")
         raw_img = gr.Image(interactive=False, label="Streetview Image")
-        adj_img = gr.Image(interactive=False, label="Explanation 2")
-
+        right_img = gr.Image(interactive=False, label="Explanation 2")
 
     with gr.Row():
         city_choice = gr.Radio(
@@ -186,27 +239,21 @@ with gr.Blocks() as interface:
         )
 
     with gr.Row():
-        REFERENCE_LABEL = "Explanation 1 (left)"
-        ADJUSTED_LABEL = "Explanation 2 (right)"
+        LEFT_LABEL = "Explanation 1 (left)"
+        RIGHT_LABEL = "Explanation 2 (right)"
         SIMILAR_LABEL = "I cannot spot a difference"
-        explanation_label2reward = {
-            REFERENCE_LABEL: 0.0,
-            ADJUSTED_LABEL: 1.0,
-            SIMILAR_LABEL: 1.0,
-        }
         explanation_choice = gr.Radio(
             choices=[
-                REFERENCE_LABEL,
-                ADJUSTED_LABEL,
+                LEFT_LABEL,
                 SIMILAR_LABEL,
+                RIGHT_LABEL,
             ],
             label="2) Select the explanation you find more helpful in making your decision.",
             value=None,
         )
 
-
     with gr.Row():
-        round_counter = gr.Textbox(value=f"", label="Information")
+        round_counter = gr.Textbox(value=f"", label="Information", interactive=False)
 
     with gr.Row():
         feature_vec = gr.JSON(value={}, label="feature_vec encoded", visible=False)
@@ -216,6 +263,7 @@ with gr.Blocks() as interface:
             "You must choose a city and an explanation before you can continue.",
             visible=False,
             label="ERROR",
+            interactive=False,
         )
 
     with gr.Row():
@@ -225,45 +273,46 @@ with gr.Blocks() as interface:
         _js=get_window_url_params,
         fn=hello,
         inputs=[
-            ref_img,
+            left_img,
             raw_img,
-            adj_img,
+            right_img,
             round_counter,
             feature_vec,
             url_params,
             pred,
+            left_ref_img_indicator,
         ],
         outputs=[
-            ref_img,
+            left_img,
             raw_img,
-            adj_img,
+            right_img,
             round_counter,
             feature_vec,
             url_params,
             pred,
+            left_ref_img_indicator,
         ],
     )
-
     submit.click(
         fn=load_images,
         inputs=[
-            ref_img,
+            left_img,
             raw_img,
-            adj_img,
+            right_img,
             round_counter,
             url_params,
             feature_vec,
-            gr.Number(value=explanation_label2reward.get(city_choice), visible=False),
             city_choice,
             explanation_choice,
             pred,
             submit,
             warning,
+            left_ref_img_indicator,
         ],
         outputs=[
-            ref_img,
+            left_img,
             raw_img,
-            adj_img,
+            right_img,
             round_counter,
             feature_vec,
             url_params,
@@ -272,6 +321,7 @@ with gr.Blocks() as interface:
             pred,
             submit,
             warning,
+            left_ref_img_indicator,
         ],
     )
 

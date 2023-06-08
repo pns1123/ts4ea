@@ -102,18 +102,14 @@ class ExplanationDistributor:
             filename = next(filename_iter)
             img = Image.open(f"streetview/raw/{filename}")
 
-            while True:
-                try:
-                    exp_adjusted = compute_render_explanation(
-                        img, lime_config=lime_config, render_config=render_config
-                    )
-                    break
-                except:
-                    print("exception in explanation computation")
-                    # load static images
-                    filename = next(filename_iter)
-                    img = Image.open(f"streetview/raw/{filename}")
-                    continue
+            try:
+                exp_adjusted = compute_render_explanation(
+                    img, lime_config=lime_config, render_config=render_config
+                )
+            except:
+                print("exception in explanation computation")
+                # load static images
+                exp_adjusted = img
 
         img.save(img_buffer, format="PNG")
         ref_exp = Image.open(f"streetview/reference_explanations/{filename}")
@@ -172,14 +168,13 @@ async def register_user(stream_res):
             json.dumps({"filename_permutation": user_filename_permutation}),
         )
         parameter_key = str.encode(f"{user_id.decode()}_parameter")
-        #mu = config_encoder.encode(
-        #    {
-        #        key: default_params[key]
-        #        for key in config_encoder.decode(config_encoder.sample_feature())
-        #    }
-        #)
-        mu = np.zeros(len(config_encoder.sample_feature()))
-        sigma2 = 2*np.ones(len(mu))
+        mu = 0.5*config_encoder.encode(
+            {
+                key: default_params[key]
+                for key in config_encoder.decode(config_encoder.sample_feature())
+            }
+        )
+        sigma2 = np.ones(len(mu))
         await conn.set(
             parameter_key,
             json.dumps({"mu": list(mu), "sigma2": list(sigma2)}),
