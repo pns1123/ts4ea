@@ -50,7 +50,8 @@ def hello(
         img_left = Image.open(io.BytesIO(y[b"ref_exp_bytes"]))
         img_right = Image.open(io.BytesIO(y[b"exp_adjusted_bytes"]))
         cur_round = y[b"round"].decode()
-        pred = y[b"pred"]
+        pred_city = y[b"pred"].decode()
+        pred = f"The AI predicts that the image was taken in {pred_city}. It gives two explanations for its guess:"
 
         feature_vec = y[b"feature_vec"]
         round_counter = f"Round: {cur_round}/{N_ROUNDS}. \nDO NOT CLICK NEXT WHILE YOU SEE THIS MESSAGE. Clicking next  before completing all {N_ROUNDS} rounds will end the current stage prematurely and lead to a loss of your financial compensation!"
@@ -90,7 +91,7 @@ def load_images(
             raw_img,
             adj_img,
             round_counter,
-            feature_vec,
+            json.dumps(feature_vec),
             url_params,
             city_choice,
             explanation_choice,
@@ -104,8 +105,9 @@ def load_images(
         with RedisConnection() as conn:
             stream_name = str.encode(f"{user_id}_reward_history")
             print(f"load_images xadd on {stream_name}")
-            print(feature_vec)
-            print(json.dumps(feature_vec))
+            print("feature_vec =", feature_vec)
+            print("json.dumps(...) =", json.dumps(feature_vec))
+            print("type(...) =", type(feature_vec))
             conn.xadd(
                 stream_name,
                 {
@@ -126,7 +128,8 @@ def load_images(
             ref_img = Image.open(io.BytesIO(y[b"ref_exp_bytes"]))
             adj_img = Image.open(io.BytesIO(y[b"exp_adjusted_bytes"]))
             cur_round = y[b"round"].decode()
-            pred = y[b"pred"]
+            pred_city = y[b"pred"].decode()
+            pred = f"The AI predicts that the image was taken in {pred_city}. It gives two explanations for its guess:"
             feature_vec = y[b"feature_vec"]
 
             if int(cur_round) == N_ROUNDS + 1:
@@ -165,14 +168,22 @@ def load_images(
 
 with gr.Blocks() as interface:
     url_params = gr.JSON(value={}, visible=False, label="URL Params")
-    pred = gr.Text("", visible=False)
     # text_input = gr.Text(label="Input")
     # text_output = gr.Text(label="Output")
 
+    pred = gr.Text("", visible=True, label="AI Prediction")
     with gr.Row():
         ref_img = gr.Image(interactive=False, label="Explanation 1")
         raw_img = gr.Image(interactive=False, label="Streetview Image")
         adj_img = gr.Image(interactive=False, label="Explanation 2")
+
+
+    with gr.Row():
+        city_choice = gr.Radio(
+            choices=["Berlin", "Hamburg", "Jerusalem", "Tel-Aviv"],
+            label="1) Select the city this Streetview photo was taken in:",
+            value=None,
+        )
 
     with gr.Row():
         REFERENCE_LABEL = "Explanation 1 (left)"
@@ -189,16 +200,10 @@ with gr.Blocks() as interface:
                 ADJUSTED_LABEL,
                 SIMILAR_LABEL,
             ],
-            label="1) Select the explanation you find more helpful in making your decision.",
+            label="2) Select the explanation you find more helpful in making your decision.",
             value=None,
         )
 
-    with gr.Row():
-        city_choice = gr.Radio(
-            choices=["Berlin", "Hamburg", "Jerusalem", "Tel-Aviv"],
-            label="2) Select the city this Streetview photo was taken in:",
-            value=None,
-        )
 
     with gr.Row():
         round_counter = gr.Textbox(value=f"", label="Information")
@@ -215,7 +220,6 @@ with gr.Blocks() as interface:
 
     with gr.Row():
         submit = gr.Button("Continue")
-
 
     interface.load(
         _js=get_window_url_params,
