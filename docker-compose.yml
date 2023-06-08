@@ -18,6 +18,9 @@ services:
 
   ui:
     image: ui_img
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
     command: python3 -u ts4ea/ui.py
     ports:
       - '7860:7860'
@@ -26,6 +29,9 @@ services:
 
   server:
     image: server_img
+    build:
+      context: .
+      dockerfile: Dockerfile.server
     command: python3 ts4ea/server.py
     networks:
     - app-tier

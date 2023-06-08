@@ -7,11 +7,18 @@ import os
 from configuration import ConfigurationEncoder
 from dataclasses import asdict
 from explainer import compute_render_explanation, predict, LIMEConfig, RenderConfig
-from global_config import ATTENTION_CHECK_FILENAME, FILENAME2PRED, UNORDERED_FILENAMES
+from global_config import ATTENTION_CHECK_FILENAME
 from itertools import cycle, islice
 from msg_q import AsyncRedisBroker, AsyncRedisConnection, RedisConnection
 from PIL import Image
 from thompson_sampling import ThompsonSampler
+
+# ------------------------------------------------------------
+with open("streetview/filename2pred.json", "r") as f:
+    FILENAME2PRED = json.load(f)
+UNORDERED_FILENAMES = [
+    f"{fn[:-4]}.png" for fn in FILENAME2PRED if fn != ATTENTION_CHECK_FILENAME
+]
 
 categorical_variables = {
     "segmentation_method": ["felzenszwalb", "slic"],  # , "quickshift", "watershed"],
@@ -27,7 +34,7 @@ config_encoder = ConfigurationEncoder(categorical_variables, numerical_variables
 n_var = config_encoder.categorical_offset[-1] + len(config_encoder.numerical_variables)
 
 thompson_sampler = ThompsonSampler(config_encoder=config_encoder)
-
+# ------------------------------------------------------------
 
 class ExplanationDistributor:
     def __init__(self, user_id):
@@ -165,13 +172,14 @@ async def register_user(stream_res):
             json.dumps({"filename_permutation": user_filename_permutation}),
         )
         parameter_key = str.encode(f"{user_id.decode()}_parameter")
-        mu = config_encoder.encode(
-            {
-                key: default_params[key]
-                for key in config_encoder.decode(config_encoder.sample_feature())
-            }
-        )
-        sigma2 = np.ones(len(mu))
+        #mu = config_encoder.encode(
+        #    {
+        #        key: default_params[key]
+        #        for key in config_encoder.decode(config_encoder.sample_feature())
+        #    }
+        #)
+        mu = np.zeros(len(config_encoder.sample_feature()))
+        sigma2 = 2*np.ones(len(mu))
         await conn.set(
             parameter_key,
             json.dumps({"mu": list(mu), "sigma2": list(sigma2)}),
