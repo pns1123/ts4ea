@@ -46,7 +46,7 @@ def predict_batch(proc_batch: np.ndarray):
     output: np array of size (batch, 4) where every row represents the softmax
             output of an image inside the given batch
     """
-    return model.predict(proc_batch)
+    return model.predict(proc_batch, verbose=0)
 
 
 def decode_model_output(output: np.ndarray) -> str:

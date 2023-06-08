@@ -3,6 +3,8 @@ import numpy as np
 import redis
 import redis.asyncio as aredis
 
+from global_config import REDIS_HOST
+
 # --------------------------
 
 
@@ -11,11 +13,8 @@ class RedisConnection:
     async context manager to hold connection to redis
     """
 
-    def __init__(self, host="redis", port=6379):
-        #prod
+    def __init__(self, host=REDIS_HOST, port=6379):
         self.connection = redis.Redis(host=host, port=port)
-        #dev
-        #self.connection = redis.Redis()
 
     def __enter__(self):
         return self.connection
@@ -33,11 +32,8 @@ class AsyncRedisConnection:
     async context manager to hold connection to redis
     """
 
-    def __init__(self, host="redis", port=6379):
-        #prod
+    def __init__(self, host=REDIS_HOST, port=6379):
         self.connection = aredis.Redis(host=host, port=port)
-        #dev
-        #self.connection = aredis.Redis()
 
     async def __aenter__(self):
         return self.connection

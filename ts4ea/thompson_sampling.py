@@ -26,38 +26,30 @@ class ThompsonSampler:
             key: reference_param_full[key]
             for key in self.config_encoder.decode(self.config_encoder.sample_feature())
         }
-        # only categorical variables considered for now!
-        config_enum = product_dicts(self.config_encoder.categorical_variables)
-        config_design_matrix = [
-            self.config_encoder.encode(config) for config in config_enum
-        ]
-        ref_indicator = [
-            1 if config == reference_param_restr else 0 for config in config_enum
-        ]
-        self.X_ref = np.array(config_design_matrix)
-        self.y_ref = np.array(ref_indicator)
 
-    def sample_model(self, X: np.ndarray, y: np.ndarray):
-        """
-        X.shape = (n, m)
-        y.shape = (n,)
-        """
-        X_extended = np.concatenate([self.X_ref, X], axis=0)
-        y_extended = np.concatenate([self.y_ref, y], axis=0)
-        n_row, n_col = X_extended.shape
-        bootstrap_n = n_row
-        bootstrap_indices = (
-            pd.DataFrame({"y": y_extended})
-            .groupby("y")
-            .sample(n=bootstrap_n//2+1, replace=True)
-            .index.values
+    @staticmethod
+    def amp_update(mu_prior, sigma2_prior, x, y, beta=1):
+        def v(t):
+            return stats.norm.pdf(t) / stats.norm.cdf(t)
+
+        def w(t):
+            return v(t) * (v(t) + t)
+
+        Sigma2 = beta**2 + np.inner(sigma2_prior, x)
+        scaled_ip = y * np.inner(x, mu_prior) / np.sqrt(Sigma2)
+        mu_posterior = mu_prior + y / np.sqrt(Sigma2) * x * v(scaled_ip)
+        sigma2_posterior = sigma2_prior * (
+            np.ones(len(sigma2_prior)) - 1 / Sigma2 * x * sigma2_prior * w(scaled_ip)
         )
-        clf = LogisticRegression(random_state=1, max_iter=1000, penalty="l2").fit(
-            X_extended[bootstrap_indices, :], y_extended[bootstrap_indices]
-        )
-        return clf.coef_.squeeze()
-        # n = self.config_encoder.categorical_offset[-1] + len(self.config_encoder.numerical_variables)
-        # return stats.multivariate_normal(np.zeros(n), np.eye(n)).rvs()
+        return mu_posterior, sigma2_posterior
+
+    @staticmethod
+    def sample_model(mu, sigma2):
+        """
+        mu.shape = (n,)
+        sigma2.shape = (n,)
+        """
+        return stats.multivariate_normal(mu, np.diag(sigma2)).rvs()
 
     def select_arm(self, theta):
         """
@@ -73,3 +65,79 @@ class ThompsonSampler:
         return self.config_encoder.decode(opt_res.x)
 
 
+if __name__ == "__main__":
+    categorical_variables = {
+        "segmentation_method": [
+            "felzenszwalb",
+            "slic",
+        ],  # , "quickshift", "watershed"],
+        "negative": [None, "darkblue"],
+        "coverage": [0.15, 0.5, 0.85],
+        "opacity": [0.15, 0.5, 0.85],
+    }
+
+    # numerical_variables = {"coverage": (0, 1), "opacity": (0, 1)}
+    numerical_variables = {}
+
+    config_encoder = ConfigurationEncoder(categorical_variables, numerical_variables)
+    n_var = config_encoder.categorical_offset[-1] + len(
+        config_encoder.numerical_variables
+    )
+
+    thompson_sampler = ThompsonSampler(config_encoder=config_encoder)
+
+    # default_params = {**asdict(LIMEConfig()), **asdict(RenderConfig())}
+    default_params = {
+        "segmentation_method": "slic",
+        "negative": None,
+        "coverage": 0.5,
+        "opacity": 0.5,
+    }
+    target_params = {
+        "segmentation_method": "slic",
+        "negative": "darkblue",
+        "coverage": 0.85,
+        "opacity": 0.85,
+    }
+    print(tuple(config_encoder.encode(target_params)))
+    print(tuple(config_encoder.encode(default_params)))
+    print(
+        tuple(config_encoder.encode(target_params))
+        <= tuple(config_encoder.encode(default_params))
+    )
+    mu_prior = config_encoder.encode(default_params)
+    sigma2_prior = 5 * np.ones(len(mu_prior))
+    print(mu_prior)
+    print(sigma2_prior)
+    n_iter = 50
+    n_samples = 100
+    y_late_record = []
+    y_early_record = []
+    for _ in range(n_samples):
+        y_record = []
+        mu_prior = config_encoder.encode(default_params)
+        sigma2_prior = 5 * np.ones(len(mu_prior))
+        for _ in range(n_iter):
+            theta = thompson_sampler.sample_model(mu_prior, sigma2_prior)
+            config = thompson_sampler.select_arm(theta)
+            y = (
+                1
+                if tuple(config_encoder.encode(config))
+                <= tuple(config_encoder.encode(default_params))
+                else -1
+            )
+            y_record.append(y)
+            mu_prior, sigma2_prior = thompson_sampler.amp_update(
+                mu_prior, sigma2_prior, config_encoder.encode(config), y
+            )
+        y_early_record.append(np.mean(y_record[:10]))
+        y_late_record.append(np.mean(y_record[-10:]))
+        #print(72 * "-")
+        #print(mu_prior)
+        #print(sigma2_prior)
+        #print(y_record, np.mean(y_record[:8]), np.mean(y_record[8:]))
+        #print(target_params)
+        #print(thompson_sampler.select_arm(theta))
+    print(y_early_record)
+    print(y_late_record)
+    print(np.mean(y_early_record), np.mean(y_late_record))
