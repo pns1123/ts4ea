@@ -233,7 +233,7 @@ with gr.Blocks() as interface:
 
     with gr.Row():
         city_choice = gr.Radio(
-            choices=["Berlin", "Hamburg", "Jerusalem", "Tel-Aviv"],
+            choices=["Berlin", "Hamburg", "Jerusalem", "Tel Aviv"],
             label="1) Select the city this Streetview photo was taken in:",
             value=None,
         )
