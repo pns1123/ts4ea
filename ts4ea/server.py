@@ -36,6 +36,7 @@ n_var = config_encoder.categorical_offset[-1] + len(config_encoder.numerical_var
 thompson_sampler = ThompsonSampler(config_encoder=config_encoder)
 # ------------------------------------------------------------
 
+
 class ExplanationDistributor:
     def __init__(self, user_id):
         self.user_id = user_id
@@ -46,7 +47,8 @@ class ExplanationDistributor:
         # fix a permutation of filenames for user and store list in redis
         async with AsyncRedisConnection() as conn:
             current_round = (
-                await conn.xlen(str.encode(f"{self.user_id.decode()}_reward_history")) + 1
+                await conn.xlen(str.encode(f"{self.user_id.decode()}_reward_history"))
+                + 1
             )
             permutation_key = str.encode(
                 f"{self.user_id.decode()}_filename_permutation"
@@ -73,6 +75,7 @@ class ExplanationDistributor:
             float(interaction_data.get(b"reward").decode()),
         )
 
+        print({"mu": list(mu_posterior), "sigma2": list(sigma2_posterior)})
         async with AsyncRedisConnection() as conn:
             await conn.set(
                 parameter_key,
@@ -111,19 +114,30 @@ class ExplanationDistributor:
                 # load static images
                 exp_adjusted = img
 
+        print(filename)
         img.save(img_buffer, format="PNG")
         ref_exp = Image.open(f"streetview/reference_explanations/{filename}")
         ref_exp.save(ref_exp_buffer, format="PNG")
         exp_adjusted.save(exp_adjusted_buffer, format="PNG")
 
-        stream_name = str.encode(f"{self.user_id.decode()}_explanations")
         async with AsyncRedisConnection() as conn:
             await conn.xadd(
-                stream_name,
+                str.encode(f"{self.user_id.decode()}_explanations"),
                 {
                     "img_bytes": img_buffer.getvalue(),
                     "ref_exp_bytes": ref_exp_buffer.getvalue(),
                     "exp_adjusted_bytes": exp_adjusted_buffer.getvalue(),
+                    "pred": FILENAME2PRED[filename]["pred"],
+                    "round": current_round,
+                    "feature_vec": json.dumps(
+                        {"coef": list(config_encoder.encode(params))}
+                    ),
+                },
+            )
+            await conn.xadd(
+                str.encode(f"{self.user_id.decode()}_explanation_infos"),
+                {
+                    "filename": filename,
                     "pred": FILENAME2PRED[filename]["pred"],
                     "round": current_round,
                     "feature_vec": json.dumps(
@@ -168,13 +182,14 @@ async def register_user(stream_res):
             json.dumps({"filename_permutation": user_filename_permutation}),
         )
         parameter_key = str.encode(f"{user_id.decode()}_parameter")
-        mu = 0.5*config_encoder.encode(
+        mu = 0.5 * config_encoder.encode(
             {
                 key: default_params[key]
                 for key in config_encoder.decode(config_encoder.sample_feature())
             }
         )
         sigma2 = np.ones(len(mu))
+        print(json.dumps({"mu": list(mu), "sigma2": list(sigma2)}))
         await conn.set(
             parameter_key,
             json.dumps({"mu": list(mu), "sigma2": list(sigma2)}),
@@ -187,6 +202,7 @@ async def register_user(stream_res):
 
     # load static images
     filename = next(filename_iter)
+    print(filename)
     img = Image.open(f"streetview/raw/{filename}")
     img.save(img_buffer, format="PNG")
 
@@ -221,18 +237,28 @@ async def register_user(stream_res):
     )
     exp_adjusted.save(exp_adjusted_buffer, format="PNG")
 
-    stream_name = str.encode(f"{user_id.decode()}_explanations")
     # stream_name = b"test_stream"
     async with AsyncRedisConnection() as conn:
         print(f"register_user: xadd to {stream_name}")
         await conn.xadd(
-            stream_name,
+            str.encode(f"{user_id.decode()}_explanations"),
             {
                 "img_bytes": img_buffer.getvalue(),
                 "ref_exp_bytes": ref_exp_buffer.getvalue(),
                 "exp_adjusted_bytes": exp_adjusted_buffer.getvalue(),
                 "pred": FILENAME2PRED[filename]["pred"],
                 "round": 1,
+                "feature_vec": json.dumps(
+                    {"coef": list(config_encoder.encode(params))}
+                ),
+            },
+        )
+        await conn.xadd(
+            str.encode(f"{user_id.decode()}_explanation_infos"),
+            {
+                "filename": filename,
+                "pred": FILENAME2PRED[filename]["pred"],
+                "round": 0,
                 "feature_vec": json.dumps(
                     {"coef": list(config_encoder.encode(params))}
                 ),

@@ -195,7 +195,7 @@ def load_images(
                     url_params,
                     gr.update(visible=False),
                     gr.update(visible=False),
-                    pred,
+                    gr.update(visible=False),
                     gr.update(visible=False),
                     gr.update(visible=False),
                     left_ref_ind,

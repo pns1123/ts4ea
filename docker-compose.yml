@@ -10,7 +10,7 @@ services:
     restart: always
       #ports:
       #  - '6379:6379'
-    command: redis-server --save 20 1 --loglevel warning 
+    command: redis-server --appendonly yes --appendfilename study.aof --loglevel warning 
     volumes: 
       - cache:/data
     networks:
@@ -32,7 +32,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.server
-    command: python3 ts4ea/server.py
+    command: python3 -u ts4ea/server.py
     networks:
     - app-tier
 
