@@ -26,10 +26,7 @@ categorical_variables = {
     "opacity": [0.15, 0.5, 0.85],
 }
 
-# numerical_variables = {"coverage": (0, 1), "opacity": (0, 1)}
-numerical_variables = {}
-
-config_encoder = ConfigurationEncoder(categorical_variables, numerical_variables)
+config_encoder = ConfigurationEncoder(categorical_variables, {})
 n_var = config_encoder.categorical_offset[-1] + len(config_encoder.numerical_variables)
 
 thompson_sampler = ThompsonSampler(config_encoder=config_encoder)
@@ -145,7 +142,6 @@ class ExplanationDistributor:
                 },
             )
 
-        print(json.dumps({"mu": list(mu_posterior), "sigma2": list(sigma2_posterior)}))
         img_buffer.close()
         ref_exp_buffer.close()
         exp_adjusted_buffer.close()
@@ -259,7 +255,6 @@ async def register_user(stream_res):
             },
         )
 
-    print(json.dumps({"mu": list(mu), "sigma2": list(sigma2)}))
     img_buffer.close()
     ref_exp_buffer.close()
     exp_adjusted_buffer.close()
