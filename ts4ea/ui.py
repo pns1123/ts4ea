@@ -38,7 +38,6 @@ def coin_flip():
 
 
 def compute_reward(ref_left_indicator, choice):
-    print(ref_left_indicator, type(ref_left_indicator), choice, type(choice))
     if choice == SIMILAR_LABEL:
         return 1.0
     elif choice == RIGHT_LABEL and ref_left_indicator:
@@ -74,19 +73,16 @@ def hello(
 
         stream_keys = {str.encode(f"{user_id}_explanations"): b"$"}
         # stream_keys = {b"test_stream": b"$"}
-        print(f"hello listening on {stream_keys}")
         res = conn.xread(stream_keys, count=None, block=0)
         [a, b] = res[0]
         _, y = b[0]
         img_middle = Image.open(io.BytesIO(y[b"img_bytes"]))
 
         if coin_flip():
-            print("side A")
             img_left = Image.open(io.BytesIO(y[b"ref_exp_bytes"]))
             img_right = Image.open(io.BytesIO(y[b"exp_adjusted_bytes"]))
             left_ref_ind = True
         else:
-            print("side B")
             img_left = Image.open(io.BytesIO(y[b"exp_adjusted_bytes"]))
             img_right = Image.open(io.BytesIO(y[b"ref_exp_bytes"]))
             left_ref_ind = False
@@ -125,7 +121,6 @@ def load_images(
     warning,
     left_ref_ind,
 ):
-    print(city_choice, type(city_choice), left_ref_ind, type(left_ref_ind))
     # currently it is not clear why city_choice and explanation_choice
     # are sometimes passed as "" or None when no choice is made
     # REMOVE THIS IMPLICT BOOLEAN CHECK WHEN POSSIBLE
@@ -146,12 +141,9 @@ def load_images(
         ]
     else:
         reward = compute_reward(left_ref_ind, explanation_choice)
-        print("reward:", reward)
         user_id = url_params.get("user_id", "default_user_id")
         with RedisConnection() as conn:
             stream_name = str.encode(f"{user_id}_reward_history")
-            print("reward:", reward)
-            print("feature_vec:", feature_vec)
             conn.xadd(
                 stream_name,
                 {
@@ -164,7 +156,6 @@ def load_images(
 
             stream_name = str.encode(f"{user_id}_explanations")
             stream_keys = {stream_name: b"$"}
-            print(f"load_images xread on {stream_keys}")
             res = conn.xread(stream_keys, count=None, block=0)
             [a, b] = res[0]
             _, y = b[0]

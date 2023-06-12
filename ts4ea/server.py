@@ -22,7 +22,6 @@ UNORDERED_FILENAMES = [
 
 categorical_variables = {
     "segmentation_method": ["felzenszwalb", "slic"],  # , "quickshift", "watershed"],
-    "negative": [None, "darkblue"],
     "coverage": [0.15, 0.5, 0.85],
     "opacity": [0.15, 0.5, 0.85],
 }
@@ -75,7 +74,6 @@ class ExplanationDistributor:
             float(interaction_data.get(b"reward").decode()),
         )
 
-        print({"mu": list(mu_posterior), "sigma2": list(sigma2_posterior)})
         async with AsyncRedisConnection() as conn:
             await conn.set(
                 parameter_key,
@@ -91,7 +89,6 @@ class ExplanationDistributor:
         render_config = RenderConfig(
             coverage=params["coverage"],
             opacity=params["opacity"],
-            negative=params["negative"],
         )
 
         if current_round == 6:
@@ -114,7 +111,6 @@ class ExplanationDistributor:
                 # load static images
                 exp_adjusted = img
 
-        print(filename)
         img.save(img_buffer, format="PNG")
         ref_exp = Image.open(f"streetview/reference_explanations/{filename}")
         ref_exp.save(ref_exp_buffer, format="PNG")
@@ -143,9 +139,13 @@ class ExplanationDistributor:
                     "feature_vec": json.dumps(
                         {"coef": list(config_encoder.encode(params))}
                     ),
+                    "model_params": json.dumps(
+                        {"mu": list(mu_posterior), "sigma2": list(sigma2_posterior)}
+                    ),
                 },
             )
 
+        print(json.dumps({"mu": list(mu_posterior), "sigma2": list(sigma2_posterior)}))
         img_buffer.close()
         ref_exp_buffer.close()
         exp_adjusted_buffer.close()
@@ -154,7 +154,6 @@ class ExplanationDistributor:
 async def register_user(stream_res):
     timestamp, msg = stream_res[0]
     user_id = msg.get(b"user_id")
-    print(f"register_user: user_id = {user_id}")
 
     if user_id is not None:
         stream_name = str.encode(f"{user_id.decode()}_reward_history")
@@ -168,7 +167,6 @@ async def register_user(stream_res):
         # ping the msg q for changes in stream key to take effect
         # o/w msg q could wait for new messages based on non-updated stream keys
         await conn.xadd(b"ping", {"msg": "pong"})
-        print("xadd ping called")
 
     # fix a permutation of filenames for user and store list in redis
     user_filename_permutation = UNORDERED_FILENAMES.copy()
@@ -188,8 +186,7 @@ async def register_user(stream_res):
                 for key in config_encoder.decode(config_encoder.sample_feature())
             }
         )
-        sigma2 = np.ones(len(mu))
-        print(json.dumps({"mu": list(mu), "sigma2": list(sigma2)}))
+        sigma2 = 0.5 * np.ones(len(mu))
         await conn.set(
             parameter_key,
             json.dumps({"mu": list(mu), "sigma2": list(sigma2)}),
@@ -202,7 +199,6 @@ async def register_user(stream_res):
 
     # load static images
     filename = next(filename_iter)
-    print(filename)
     img = Image.open(f"streetview/raw/{filename}")
     img.save(img_buffer, format="PNG")
 
@@ -219,7 +215,6 @@ async def register_user(stream_res):
     render_config = RenderConfig(
         coverage=params["coverage"],
         opacity=params["opacity"],
-        negative=params["negative"],
     )
 
     while all([params[key] == default_params[key] for key in params]):
@@ -228,9 +223,8 @@ async def register_user(stream_res):
     lime_config = LIMEConfig(segmentation_method=params["segmentation_method"])
 
     render_config = RenderConfig(
-        #    coverage=params["coverage"],
-        #    opacity=params["opacity"],
-        negative=params["negative"],
+        coverage=params["coverage"],
+        opacity=params["opacity"],
     )
     exp_adjusted = compute_render_explanation(
         img, lime_config=lime_config, render_config=render_config
@@ -239,7 +233,6 @@ async def register_user(stream_res):
 
     # stream_name = b"test_stream"
     async with AsyncRedisConnection() as conn:
-        print(f"register_user: xadd to {stream_name}")
         await conn.xadd(
             str.encode(f"{user_id.decode()}_explanations"),
             {
@@ -251,6 +244,7 @@ async def register_user(stream_res):
                 "feature_vec": json.dumps(
                     {"coef": list(config_encoder.encode(params))}
                 ),
+                "model_params": json.dumps({"mu": list(mu), "sigma2": list(sigma2)}),
             },
         )
         await conn.xadd(
@@ -265,19 +259,21 @@ async def register_user(stream_res):
             },
         )
 
+    print(json.dumps({"mu": list(mu), "sigma2": list(sigma2)}))
     img_buffer.close()
     ref_exp_buffer.close()
     exp_adjusted_buffer.close()
 
 
 async def ping(msg):
-    print("pong")
+    return
 
 
 stream_keys = {
     b"hello": b"$",
     b"ping": b"$",
 }
+
 stream_processors = {
     b"hello": register_user,
     b"ping": ping,
