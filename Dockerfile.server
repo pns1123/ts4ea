@@ -16,5 +16,6 @@ RUN pip install --upgrade pip \
 COPY model /model
 COPY streetview /streetview
 COPY ts4ea /ts4ea
+COPY utils /utils
 WORKDIR "/"
 

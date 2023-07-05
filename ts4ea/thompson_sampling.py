@@ -1,9 +1,8 @@
 import numpy as np
 import pandas as pd
 
-from configuration import ConfigurationEncoder  # , config_encoder
+from configuration import ConfigurationEncoder, LIMEConfig, RenderConfig
 from dataclasses import asdict
-from explainer import LIMEConfig, RenderConfig
 from itertools import product
 from sklearn.linear_model import LogisticRegression
 from scipy import stats, optimize
@@ -18,14 +17,7 @@ def product_dicts(levels: dict):
 
 class ThompsonSampler:
     def __init__(self, config_encoder: ConfigurationEncoder):
-        self.observations = []
         self.config_encoder = config_encoder
-
-        reference_param_full = {**asdict(LIMEConfig()), **asdict(RenderConfig())}
-        reference_param_restr = {
-            key: reference_param_full[key]
-            for key in self.config_encoder.decode(self.config_encoder.sample_feature())
-        }
 
     @staticmethod
     def amp_update(mu_prior, sigma2_prior, x, y, beta=1):

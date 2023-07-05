@@ -16,7 +16,6 @@ class LIMEConfig:
     """Class for specifying LIME config params"""
 
     segmentation_method: str = "felzenszwalb"
-    segmentation_settings: dict = field(default_factory=dict)
     num_of_samples: int = 50
     p: float = 0.33
 
@@ -50,7 +49,7 @@ def predict_batch(proc_batch: np.ndarray):
 
 
 def decode_model_output(output: np.ndarray) -> str:
-    MODEL_OUTPUT_MAP = ["Tel_Aviv", "Westjerusalem", "Berlin", "Hamburg"]
+    MODEL_OUTPUT_MAP = ["Tel Aviv", "Jerusalem", "Berlin", "Hamburg"]
     return MODEL_OUTPUT_MAP[int(np.argmax(output, axis=1))]
 
 

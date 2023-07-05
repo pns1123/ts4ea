@@ -13,6 +13,6 @@ RUN pip install --upgrade pip \
     && pip install -r /requirements.txt \
     && rm -rf /root/.cache/pip
 
-RUN mkdir /ts4ea
+COPY streetview /streetview
 COPY ts4ea /ts4ea
 

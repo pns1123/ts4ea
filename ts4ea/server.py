@@ -3,34 +3,100 @@ import io
 import json
 import numpy as np
 import os
+import uuid
 
 from configuration import ConfigurationEncoder
 from dataclasses import asdict
 from explainer import compute_render_explanation, predict, LIMEConfig, RenderConfig
-from global_config import ATTENTION_CHECK_FILENAME
+from global_config import (
+    ATTENTION_CHECK_FILENAME,
+    CONFIG2ID,
+    CONFIG_ENCODER,
+    FILENAME2PRED,
+    LEARNING_ROUNDS,
+    MU_INITIAL,
+    THOMPSON_SAMPLER,
+    SIGMA2_INITIAL,
+    UNORDERED_FILENAMES,
+)
 from itertools import cycle, islice
 from msg_q import AsyncRedisBroker, AsyncRedisConnection, RedisConnection
 from PIL import Image
 from thompson_sampling import ThompsonSampler
 
-# ------------------------------------------------------------
-with open("streetview/filename2pred.json", "r") as f:
-    FILENAME2PRED = json.load(f)
-UNORDERED_FILENAMES = [
-    f"{fn[:-4]}.png" for fn in FILENAME2PRED if fn != ATTENTION_CHECK_FILENAME
-]
 
-categorical_variables = {
-    "segmentation_method": ["felzenszwalb", "slic"],  # , "quickshift", "watershed"],
-    "coverage": [0.15, 0.5, 0.85],
-    "opacity": [0.15, 0.5, 0.85],
-}
+def sample_config(thompson_sampler, mu, sigma2):
+    theta = thompson_sampler.sample_model(mu, sigma2)
+    params = thompson_sampler.select_arm(theta)
 
-config_encoder = ConfigurationEncoder(categorical_variables, {})
-n_var = config_encoder.categorical_offset[-1] + len(config_encoder.numerical_variables)
+    lime_config = LIMEConfig(segmentation_method=params["segmentation_method"])
+    render_config = RenderConfig(
+        coverage=params["coverage"],
+        opacity=params["opacity"],
+    )
+    return lime_config, render_config
 
-thompson_sampler = ThompsonSampler(config_encoder=config_encoder)
-# ------------------------------------------------------------
+
+def learning_setup(thompson_sampler, filename_iter, mu, sigma2):
+    filename = next(filename_iter)
+
+    img = Image.open(f"streetview/raw/{filename}")
+
+    reference_params = thompson_sampler.select_arm(mu)
+    reference_lime_config = LIMEConfig(
+        segmentation_method=reference_params["segmentation_method"]
+    )
+    reference_render_config = RenderConfig(
+        coverage=reference_params["coverage"],
+        opacity=reference_params["opacity"],
+    )
+
+    candidate_lime_config, candidate_render_config = sample_config(
+        thompson_sampler, mu, sigma2
+    )
+    return (
+        filename,
+        reference_lime_config,
+        reference_render_config,
+        candidate_lime_config,
+        candidate_render_config,
+    )
+
+
+def evaluation_setup(thompson_sampler, filename_iter, mu, sigma2):
+    filename = next(filename_iter)
+    reference_lime_config, reference_render_config = LIMEConfig(), RenderConfig()
+    candidate_params = thompson_sampler.select_arm(mu)
+    candidate_lime_config = LIMEConfig(
+        segmentation_method=candidate_params["segmentation_method"]
+    )
+    candidate_render_config = RenderConfig(
+        coverage=candidate_params["coverage"],
+        opacity=candidate_params["opacity"],
+    )
+    return (
+        filename,
+        reference_lime_config,
+        reference_render_config,
+        candidate_lime_config,
+        candidate_render_config,
+    )
+
+
+def attention_check_setup(thompson_sampler, filename_iter, mu, sigma2):
+    reference_lime_config, reference_render_config = sample_config(
+        thompson_sampler, mu, sigma2
+    )
+    candidate_lime_config, candidate_render_config = sample_config(
+        thompson_sampler, mu, sigma2
+    )
+    return (
+        ATTENTION_CHECK_FILENAME,
+        reference_lime_config,
+        reference_render_config,
+        candidate_lime_config,
+        candidate_render_config,
+    )
 
 
 class ExplanationDistributor:
@@ -59,15 +125,10 @@ class ExplanationDistributor:
         # keep track of displayed images in redis
         filename_iter = islice(cycle(filename_permutation), current_round, None)
 
-        # open buffers
-        img_buffer = io.BytesIO()
-        ref_exp_buffer = io.BytesIO()
-        exp_adjusted_buffer = io.BytesIO()
-
-        mu_posterior, sigma2_posterior = thompson_sampler.amp_update(
+        mu_posterior, sigma2_posterior = THOMPSON_SAMPLER.amp_update(
             np.array(param_dict.get("mu")),
             np.array(param_dict.get("sigma2")),
-            np.array(json.loads(interaction_data.get(b"feature_vec").decode())["coef"]),
+            np.array(json.loads(interaction_data[b"candidate_feature_vec"])["coef"]),
             float(interaction_data.get(b"reward").decode()),
         )
 
@@ -79,72 +140,78 @@ class ExplanationDistributor:
                 ),
             )
 
-        theta = thompson_sampler.sample_model(mu_posterior, sigma2_posterior)
-        params = thompson_sampler.select_arm(theta)
-
-        lime_config = LIMEConfig(segmentation_method=params["segmentation_method"])
-        render_config = RenderConfig(
-            coverage=params["coverage"],
-            opacity=params["opacity"],
-        )
-
-        if current_round == 6:
-            filename = ATTENTION_CHECK_FILENAME
-            img = Image.open(f"streetview/raw/{filename}")
-            exp_adjusted = compute_render_explanation(
-                img, lime_config=lime_config, render_config=render_config
-            )
-
-        else:
-            filename = next(filename_iter)
-            img = Image.open(f"streetview/raw/{filename}")
-
-            try:
-                exp_adjusted = compute_render_explanation(
-                    img, lime_config=lime_config, render_config=render_config
+        match current_round:
+            # show attention check in round 6
+            case current_round if current_round == 6:
+                (
+                    filename,
+                    reference_lime_config,
+                    reference_render_config,
+                    candidate_lime_config,
+                    candidate_render_config,
+                ) = attention_check_setup(
+                    THOMPSON_SAMPLER, filename_iter, mu_posterior, sigma2_posterior
                 )
-            except:
-                print("exception in explanation computation")
-                # load static images
-                exp_adjusted = img
-
-        img.save(img_buffer, format="PNG")
-        ref_exp = Image.open(f"streetview/reference_explanations/{filename}")
-        ref_exp.save(ref_exp_buffer, format="PNG")
-        exp_adjusted.save(exp_adjusted_buffer, format="PNG")
+            # start evaluation after LEARNING_ROUNDS
+            case current_round if current_round >= LEARNING_ROUNDS:
+                (
+                    filename,
+                    reference_lime_config,
+                    reference_render_config,
+                    candidate_lime_config,
+                    candidate_render_config,
+                ) = evaluation_setup(
+                    THOMPSON_SAMPLER, filename_iter, mu_posterior, sigma2_posterior
+                )
+            # learning setup during rounds 0..(LEARNING_ROUNDS-1)
+            case _:
+                (
+                    filename,
+                    reference_lime_config,
+                    reference_render_config,
+                    candidate_lime_config,
+                    candidate_render_config,
+                ) = learning_setup(
+                    THOMPSON_SAMPLER, filename_iter, mu_posterior, sigma2_posterior
+                )
 
         async with AsyncRedisConnection() as conn:
             await conn.xadd(
                 str.encode(f"{self.user_id.decode()}_explanations"),
                 {
-                    "img_bytes": img_buffer.getvalue(),
-                    "ref_exp_bytes": ref_exp_buffer.getvalue(),
-                    "exp_adjusted_bytes": exp_adjusted_buffer.getvalue(),
-                    "pred": FILENAME2PRED[filename]["pred"],
-                    "round": current_round,
-                    "feature_vec": json.dumps(
-                        {"coef": list(config_encoder.encode(params))}
-                    ),
-                },
-            )
-            await conn.xadd(
-                str.encode(f"{self.user_id.decode()}_explanation_infos"),
-                {
                     "filename": filename,
-                    "pred": FILENAME2PRED[filename]["pred"],
+                    "pred": FILENAME2PRED[filename],
                     "round": current_round,
-                    "feature_vec": json.dumps(
-                        {"coef": list(config_encoder.encode(params))}
+                    "explanation_id": str(uuid.uuid4()),
+                    "reference_feature_vec": json.dumps(
+                        {
+                            "coef": list(
+                                CONFIG_ENCODER.encode(
+                                    {
+                                        **asdict(reference_lime_config),
+                                        **asdict(reference_render_config),
+                                    }
+                                )
+                            )
+                        }
+                    ),
+                    "candidate_feature_vec": json.dumps(
+                        {
+                            "coef": list(
+                                CONFIG_ENCODER.encode(
+                                    {
+                                        **asdict(candidate_lime_config),
+                                        **asdict(candidate_render_config),
+                                    }
+                                )
+                            )
+                        }
                     ),
                     "model_params": json.dumps(
                         {"mu": list(mu_posterior), "sigma2": list(sigma2_posterior)}
                     ),
                 },
             )
-
-        img_buffer.close()
-        ref_exp_buffer.close()
-        exp_adjusted_buffer.close()
 
 
 async def register_user(stream_res):
@@ -168,7 +235,6 @@ async def register_user(stream_res):
     user_filename_permutation = UNORDERED_FILENAMES.copy()
     np.random.shuffle(user_filename_permutation)
     filename_iter = cycle(user_filename_permutation)
-    default_params = {**asdict(LIMEConfig()), **asdict(RenderConfig())}
     async with AsyncRedisConnection() as conn:
         permutation_key = str.encode(f"{user_id.decode()}_filename_permutation")
         await conn.set(
@@ -176,88 +242,58 @@ async def register_user(stream_res):
             json.dumps({"filename_permutation": user_filename_permutation}),
         )
         parameter_key = str.encode(f"{user_id.decode()}_parameter")
-        mu = 0.5 * config_encoder.encode(
-            {
-                key: default_params[key]
-                for key in config_encoder.decode(config_encoder.sample_feature())
-            }
-        )
-        sigma2 = 0.5 * np.ones(len(mu))
         await conn.set(
             parameter_key,
-            json.dumps({"mu": list(mu), "sigma2": list(sigma2)}),
+            json.dumps({"mu": list(MU_INITIAL), "sigma2": list(SIGMA2_INITIAL)}),
         )
 
-    # open buffers
-    img_buffer = io.BytesIO()
-    ref_exp_buffer = io.BytesIO()
-    exp_adjusted_buffer = io.BytesIO()
-
     # load static images
-    filename = next(filename_iter)
-    img = Image.open(f"streetview/raw/{filename}")
-    img.save(img_buffer, format="PNG")
-
-    ref_exp = Image.open(f"streetview/reference_explanations/{filename}")
-    ref_exp.save(ref_exp_buffer, format="PNG")
-
-    params = thompson_sampler.sample_model(mu, sigma2)
-    default_params = {**asdict(LIMEConfig()), **asdict(RenderConfig())}
-
-    theta = thompson_sampler.sample_model(mu, sigma2)
-    params = thompson_sampler.select_arm(theta)
-
-    lime_config = LIMEConfig(segmentation_method=params["segmentation_method"])
-    render_config = RenderConfig(
-        coverage=params["coverage"],
-        opacity=params["opacity"],
-    )
-
-    while all([params[key] == default_params[key] for key in params]):
-        params = config_encoder.decode(config_encoder.sample_feature())
-
-    lime_config = LIMEConfig(segmentation_method=params["segmentation_method"])
-
-    render_config = RenderConfig(
-        coverage=params["coverage"],
-        opacity=params["opacity"],
-    )
-    exp_adjusted = compute_render_explanation(
-        img, lime_config=lime_config, render_config=render_config
-    )
-    exp_adjusted.save(exp_adjusted_buffer, format="PNG")
+    (
+        filename,
+        reference_lime_config,
+        reference_render_config,
+        candidate_lime_config,
+        candidate_render_config,
+    ) = learning_setup(THOMPSON_SAMPLER, filename_iter, MU_INITIAL, SIGMA2_INITIAL)
 
     # stream_name = b"test_stream"
     async with AsyncRedisConnection() as conn:
         await conn.xadd(
             str.encode(f"{user_id.decode()}_explanations"),
             {
-                "img_bytes": img_buffer.getvalue(),
-                "ref_exp_bytes": ref_exp_buffer.getvalue(),
-                "exp_adjusted_bytes": exp_adjusted_buffer.getvalue(),
-                "pred": FILENAME2PRED[filename]["pred"],
-                "round": 1,
-                "feature_vec": json.dumps(
-                    {"coef": list(config_encoder.encode(params))}
-                ),
-                "model_params": json.dumps({"mu": list(mu), "sigma2": list(sigma2)}),
-            },
-        )
-        await conn.xadd(
-            str.encode(f"{user_id.decode()}_explanation_infos"),
-            {
                 "filename": filename,
-                "pred": FILENAME2PRED[filename]["pred"],
-                "round": 0,
-                "feature_vec": json.dumps(
-                    {"coef": list(config_encoder.encode(params))}
+                "pred": FILENAME2PRED[filename],
+                "round": 1,
+                "explanation_id": str(uuid.uuid4()),
+                "reference_feature_vec": json.dumps(
+                    {
+                        "coef": list(
+                            CONFIG_ENCODER.encode(
+                                {
+                                    **asdict(reference_lime_config),
+                                    **asdict(reference_render_config),
+                                }
+                            )
+                        )
+                    }
+                ),
+                "candidate_feature_vec": json.dumps(
+                    {
+                        "coef": list(
+                            CONFIG_ENCODER.encode(
+                                {
+                                    **asdict(candidate_lime_config),
+                                    **asdict(candidate_render_config),
+                                }
+                            )
+                        )
+                    }
+                ),
+                "model_params": json.dumps(
+                    {"mu": list(MU_INITIAL), "sigma2": list(SIGMA2_INITIAL)}
                 ),
             },
         )
-
-    img_buffer.close()
-    ref_exp_buffer.close()
-    exp_adjusted_buffer.close()
 
 
 async def ping(msg):

@@ -1,6 +1,26 @@
 import numpy as np
 
 from dataclasses import asdict, dataclass, field
+from hashlib import sha256
+
+
+# HASHING --------------------------------------------------------------------
+def config2key(restr_config: dict):
+
+    lime_config_dict = asdict(LIMEConfig())
+    for key in restr_config:
+        if key in lime_config_dict:
+            lime_config_dict[key] = restr_config[key]
+
+    render_config_dict = asdict(RenderConfig())
+    for key in restr_config:
+        if key in render_config_dict:
+            render_config_dict[key] = restr_config[key]
+
+
+    config = {**lime_config_dict, **render_config_dict}
+
+    return sha256(str((tuple(sorted(config.items())))).encode()).hexdigest()
 
 
 # EXPLAINER CONFIG -----------------------------------------------------------
@@ -9,7 +29,6 @@ class LIMEConfig:
     """Class for specifying LIME config params"""
 
     segmentation_method: str = "felzenszwalb"
-    segmentation_settings: dict = field(default_factory=dict)
     num_of_samples: int = 50
     p: float = 0.33
 
