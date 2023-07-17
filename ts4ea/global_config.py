@@ -11,10 +11,10 @@ local = False
 
 if local:
     REDIS_HOST = "0.0.0.0"
-    SHARE = False
 else:
     REDIS_HOST = "redis"
-    SHARE = True
+
+SHARE = False
 
 # --------------------------------------------------------------
 # FILES

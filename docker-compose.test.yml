@@ -28,18 +28,16 @@ services:
     - app-tier
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.fastapi.rule=Host(`study.xaidemo.de`)"
-      - "traefik.http.routers.fastapi.tls=true"
-      - "traefik.http.routers.fastapi.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.fastapi.rule=Host(`fastapi.localhost`)"
 
   traefik:
     image: traefik:v2.2
     ports:
       - "80:80"
-      - "443:443"
+      - "8080:8080"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - "$PWD/traefik/traefik.prod.toml:/etc/traefik/traefik.toml"
+      - "$PWD/traefik/traefik.dev.toml:/etc/traefik/traefik.toml"
 
   server:
     image: server_img
