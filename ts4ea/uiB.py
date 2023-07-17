@@ -142,7 +142,7 @@ def hello(
             feature_vec = {"coef": config_adjusted}
             img_right = exp_candidate
 
-        print("user_group", user_group, "feature_vec", feature_vec, "mu",  json.loads(y[b"model_params"])["mu"])
+        #print("user_group", user_group, "feature_vec", feature_vec, "mu",  json.loads(y[b"model_params"])["mu"])
         cur_round = y[b"round"].decode()
         explanation_id = y[b"explanation_id"].decode()
         filename = y[b"filename"].decode()
@@ -273,7 +273,7 @@ def load_new_round(
         else:
             feature_vec = {"coef": list(config_adjusted)}
             img_right = exp_candidate
-        print("user_group", user_group, "feature_vec", feature_vec, "mu",  json.loads(y[b"model_params"])["mu"])
+        #print("user_group", user_group, "feature_vec", feature_vec, "mu",  json.loads(y[b"model_params"])["mu"])
 
         cur_round = y[b"round"].decode()
         explanation_id = y[b"explanation_id"].decode()

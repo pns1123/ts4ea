@@ -119,7 +119,6 @@ def sample_filename_iter():
     # attention check during evaluation: show same image/explanation twice
     filenames_total[15] = filenames_total[11]
 
-    print(filenames_total)
     return list(filenames_total)
 
 
