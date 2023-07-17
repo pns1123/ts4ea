@@ -29,7 +29,7 @@ def decode_data(data):
         return ""
 
 if __name__=="__main__":
-    r = redis.Redis(host="redis", port=6379)
+    r = redis.Redis(host="localhost", port=6379)
     all_data = read_all_data(r)
     no_bytes = {
         key: val

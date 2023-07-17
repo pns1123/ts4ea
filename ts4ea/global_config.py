@@ -56,5 +56,7 @@ MU_INITIAL = 0.5 * CONFIG_ENCODER.encode(
         for key in CONFIG_ENCODER.decode(CONFIG_ENCODER.sample_feature())
     }
 )
-SIGMA2_INITIAL = np.ones(len(MU_INITIAL))
+
+#MU_INITIAL = np.zeros(len(CONFIG_ENCODER.sample_feature()))
+SIGMA2_INITIAL = 0.5*np.ones(len(MU_INITIAL))
 

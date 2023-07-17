@@ -21,7 +21,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.ui
-    command: python3 -u ts4ea/ui.py
+    command: python3 -u ts4ea/uiB.py
     ports:
       - '7860:7860'
     networks:

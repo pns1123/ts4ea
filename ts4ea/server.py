@@ -83,20 +83,44 @@ def evaluation_setup(thompson_sampler, filename_iter, mu, sigma2):
     )
 
 
-def attention_check_setup(thompson_sampler, filename_iter, mu, sigma2):
-    reference_lime_config, reference_render_config = sample_config(
-        thompson_sampler, mu, sigma2
+def pred_correct(filename_label, pred_label):
+    match pred_label:
+        case "Berlin":
+            return filename_label == "BERLIN"
+        case "Hamburg":
+            return filename_label == "HAMBURG"
+        case "Tel Aviv":
+            return filename_label == "TELAVIV"
+        case "Jerusalem":
+            return filename_label == "WESTJERUSALEM"
+
+
+def sample_filename_iter():
+    filename2pred_correct = {
+        key: val
+        for key, val in FILENAME2PRED.items()
+        if pred_correct(key.split("_")[0], val)
+    }
+    filename2pred_incorrect = {
+        key: val
+        for key, val in FILENAME2PRED.items()
+        if not pred_correct(key.split("_")[0], val)
+    }
+    # 0.75 correct and 0.25 incorrect prediction stratified sampling
+    # 16 rounds -> 12 correct, 4 incorrect
+    filenames_correct = np.random.choice(
+        list(filename2pred_correct.keys()), size=12, replace=False
     )
-    candidate_lime_config, candidate_render_config = sample_config(
-        thompson_sampler, mu, sigma2
+    filenames_incorrect = np.random.choice(
+        list(filename2pred_incorrect.keys()), size=4, replace=False
     )
-    return (
-        ATTENTION_CHECK_FILENAME,
-        reference_lime_config,
-        reference_render_config,
-        candidate_lime_config,
-        candidate_render_config,
-    )
+    filenames_total = np.concatenate([filenames_correct, filenames_incorrect])
+    np.random.shuffle(filenames_total)
+    # attention check during evaluation: show same image/explanation twice
+    filenames_total[15] = filenames_total[11]
+
+    print(filenames_total)
+    return list(filenames_total)
 
 
 class ExplanationDistributor:
@@ -123,37 +147,14 @@ class ExplanationDistributor:
             param_dict = json.loads((await conn.get(parameter_key)).decode())
 
         # keep track of displayed images in redis
-        filename_iter = islice(cycle(filename_permutation), current_round, None)
+        filename_iter = islice(cycle(filename_permutation), current_round - 1, None)
 
-        mu_posterior, sigma2_posterior = THOMPSON_SAMPLER.amp_update(
-            np.array(param_dict.get("mu")),
-            np.array(param_dict.get("sigma2")),
-            np.array(json.loads(interaction_data[b"candidate_feature_vec"])["coef"]),
-            float(interaction_data.get(b"reward").decode()),
-        )
-
-        async with AsyncRedisConnection() as conn:
-            await conn.set(
-                parameter_key,
-                json.dumps(
-                    {"mu": list(mu_posterior), "sigma2": list(sigma2_posterior)}
-                ),
-            )
 
         match current_round:
-            # show attention check in round 6
-            case current_round if current_round == 6:
-                (
-                    filename,
-                    reference_lime_config,
-                    reference_render_config,
-                    candidate_lime_config,
-                    candidate_render_config,
-                ) = attention_check_setup(
-                    THOMPSON_SAMPLER, filename_iter, mu_posterior, sigma2_posterior
-                )
             # start evaluation after LEARNING_ROUNDS
             case current_round if current_round >= LEARNING_ROUNDS:
+                mu_posterior = np.array(param_dict.get("mu"))
+                sigma2_posterior = np.array(param_dict.get("sigma2"))
                 (
                     filename,
                     reference_lime_config,
@@ -165,6 +166,15 @@ class ExplanationDistributor:
                 )
             # learning setup during rounds 0..(LEARNING_ROUNDS-1)
             case _:
+                mu_posterior, sigma2_posterior = THOMPSON_SAMPLER.amp_update(
+                    np.array(param_dict.get("mu")),
+                    np.array(param_dict.get("sigma2")),
+                    np.array(
+                        json.loads(interaction_data[b"candidate_feature_vec"])["coef"]
+                    ),
+                    float(interaction_data.get(b"reward").decode()),
+                )
+
                 (
                     filename,
                     reference_lime_config,
@@ -176,6 +186,14 @@ class ExplanationDistributor:
                 )
 
         async with AsyncRedisConnection() as conn:
+
+            await conn.set(
+                parameter_key,
+                json.dumps(
+                    {"mu": list(mu_posterior), "sigma2": list(sigma2_posterior)}
+                ),
+            )
+
             await conn.xadd(
                 str.encode(f"{self.user_id.decode()}_explanations"),
                 {
@@ -232,20 +250,21 @@ async def register_user(stream_res):
         await conn.xadd(b"ping", {"msg": "pong"})
 
     # fix a permutation of filenames for user and store list in redis
-    user_filename_permutation = UNORDERED_FILENAMES.copy()
-    np.random.shuffle(user_filename_permutation)
-    filename_iter = cycle(user_filename_permutation)
+    user_filename_seq = sample_filename_iter()
     async with AsyncRedisConnection() as conn:
         permutation_key = str.encode(f"{user_id.decode()}_filename_permutation")
         await conn.set(
             permutation_key,
-            json.dumps({"filename_permutation": user_filename_permutation}),
+            json.dumps({"filename_permutation": user_filename_seq}),
         )
         parameter_key = str.encode(f"{user_id.decode()}_parameter")
         await conn.set(
             parameter_key,
             json.dumps({"mu": list(MU_INITIAL), "sigma2": list(SIGMA2_INITIAL)}),
         )
+
+    # keep track of displayed images in redis
+    filename_iter = cycle(user_filename_seq)
 
     # load static images
     (
