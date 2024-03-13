@@ -1,0 +1,21 @@
+FROM python:3.10-slim
+
+WORKDIR /
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && apt-get install ffmpeg libsm6 libxext6  -y \
+    && apt-get purge -y --auto-remove \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements_server.txt /requirements.txt
+RUN pip install --upgrade pip \
+    && pip install -r /requirements.txt \
+    && rm -rf /root/.cache/pip
+
+COPY model /model
+COPY streetview /streetview
+COPY ts4ea /ts4ea
+COPY utils /utils
+WORKDIR "/"
+
