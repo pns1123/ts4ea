@@ -1,0 +1,14 @@
+from pydantic import BaseModel, Field
+from typing import Optional
+
+class UserFeedback(BaseModel):
+    binaryResponse: Optional[bool] 
+    scaleResponse: Optional[float]  
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "binary_response": True,
+                "scale_response": 6
+            }
+        }

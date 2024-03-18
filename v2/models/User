@@ -1,0 +1,20 @@
+from pydantic import BaseModel, EmailStr
+
+class User(BaseModel):
+    user_id: str # Unique identifier for the user
+    firstName: str  
+    lastName: str  
+    email: EmailStr  
+    # You can add more fields like age, gender, etc. as per your requirements
+
+    class Config:   
+        schema_extra = {
+            "example": {
+                "user_id": "user123",
+                "email": "user@example.com",
+                "username": "user123",
+                "full_name": "John Doe"
+            }
+        }
+
+    
