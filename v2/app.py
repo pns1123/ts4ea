@@ -1,39 +1,52 @@
 from fastapi import FastAPI
-from typing import List
+from typing import List, Optional
+from pydantic import Field
 import uuid
 
 # Import Pydantic models
-from models import User, Survey, Explanation, UserFeedback
-
+from models.UserFeedback import DiscreteResponse, ContinuousResponse
 
 # Create FastAPI instance
 app = FastAPI()
 
+# Global variable to track user IDs
+user_id_counter = 0
 
-# Endpoint to create a new user
-@app.post("/users/")
-async def create_user(firstName: str, lastName: str, email: str):
-    # Logic to create a new user
-    # Here you would typically store the user data in your database
-    # Return the created user data
-    return {"message": "User created successfully"}
+# Initialize reward model and start loop internally
+def initialize_reward_model():
+    # Your initialization logic here
+    # For example, you could initialize the reward model and start the system loop
+    print("Reward model initialized and system loop started successfully")
 
-# Endpoint to create a survey
-@app.post("/surveys/")
-async def create_survey(userId: str, explanationsToDisplay: List[Explanation], questionsAnswered: int = 0):
-    surveyId = str(uuid.uuid4())  # Generate unique survey ID
-    # Logic to create a new survey
-    # Here you would typically store the survey data in your database
-    # Return the created survey data
-    return {"message": "Survey created successfully"}
 
-# Endpoint to provide feedback on an explanation
-@app.post("/surveys/{surveyId}/feedback/")
-async def provide_feedback(feedback: UserFeedback):
-    # Logic to update feedback for the specified explanation in the specified survey
-    # Return confirmation message or updated feedback data
-    return {"message": "Feedback received successfully"}
+# API endpoint to handle session start request
+@app.post("/session/start")
+async def start_session():
+    global user_id_counter
+    
+    # Assign a unique ID to the user
+    user_id = str(uuid.uuid4())
+    user_id_counter += 1
+    
+    # Initialize reward model and start loop
+    initialize_reward_model()
+    
+    return {"user_id": user_id, "message": "Session started successfully"}   
 
+
+# Endpoint to receive user feedback
+@app.post("/feedback")
+async def receive_feedback(discrete_response: Optional[DiscreteResponse] = None, continuous_response: Optional[ContinuousResponse] = None):
+    if discrete_response:
+        # Process discrete response
+        print("Received discrete response:", discrete_response)
+    elif continuous_response:
+        # Process continuous response
+        print("Received continuous response:", continuous_response)
+    else:
+        return {"message": "No feedback received"}
+
+    return {"discrete_response": discrete_response , "continous_response": continuous_response, "message": "Feedback received successfully"}
 
 
 
