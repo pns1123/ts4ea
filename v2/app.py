@@ -9,8 +9,19 @@ from models.UserFeedback import DiscreteResponse, ContinuousResponse
 # Create FastAPI instance
 app = FastAPI()
 
-# Global variable to track user IDs
-user_id_counter = 0
+# dummy list of explanations
+explanations = [
+    {
+        "id": 1,
+        "title": "Explanation 1",
+        "content": "This is explanation 1"
+    },
+    {
+        "id": 2,
+        "title": "Explanation 2",
+        "content": "This is explanation 2"
+    }
+]
 
 # Initialize reward model and start loop internally
 def initialize_reward_model():
@@ -22,16 +33,13 @@ def initialize_reward_model():
 # API endpoint to handle session start request
 @app.post("/session/start")
 async def start_session():
-    global user_id_counter
-    
     # Assign a unique ID to the user
     user_id = str(uuid.uuid4())
-    user_id_counter += 1
     
     # Initialize reward model and start loop
     initialize_reward_model()
-    
-    return {"user_id": user_id, "message": "Session started successfully"}   
+
+    return {"user_id": user_id, "Generated Explanation": explanations[0], "message": "Session started successfully"}   
 
 
 # Endpoint to receive user feedback
@@ -46,7 +54,7 @@ async def receive_feedback(discrete_response: Optional[DiscreteResponse] = None,
     else:
         return {"message": "No feedback received"}
 
-    return {"discrete_response": discrete_response , "continous_response": continuous_response, "message": "Feedback received successfully"}
+    return {"discrete_response": discrete_response , "continous_response": continuous_response, "Next Generated Explanation": explanations[1], "message": "Feedback received successfully"}
 
 
 
